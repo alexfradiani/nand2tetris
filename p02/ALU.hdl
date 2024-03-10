@@ -1,0 +1,83 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/02/ALU.hdl
+/**
+ * ALU (Arithmetic Logic Unit):
+ * Computes out = one of the following functions:
+ *                0, 1, -1,
+ *                x, y, !x, !y, -x, -y,
+ *                x + 1, y + 1, x - 1, y - 1,
+ *                x + y, x - y, y - x,
+ *                x & y, x | y
+ * on the 16-bit inputs x, y,
+ * according to the input bits zx, nx, zy, ny, f, no.
+ * In addition, computes the two output bits:
+ * if (out == 0) zr = 1, else zr = 0
+ * if (out < 0)  ng = 1, else ng = 0
+ */
+// Implementation: Manipulates the x and y inputs
+// and operates on the resulting values, as follows:
+// if (zx == 1) sets x = 0        // 16-bit constant
+// if (nx == 1) sets x = !x       // bitwise not
+// if (zy == 1) sets y = 0        // 16-bit constant
+// if (ny == 1) sets y = !y       // bitwise not
+// if (f == 1)  sets out = x + y  // integer 2's complement addition
+// if (f == 0)  sets out = x & y  // bitwise and
+// if (no == 1) sets out = !out   // bitwise not
+
+CHIP ALU {
+    IN  
+        x[16], y[16],  // 16-bit inputs        
+        zx, // zero the x input?
+        nx, // negate the x input?
+        zy, // zero the y input?
+        ny, // negate the y input?
+        f,  // compute (out = x + y) or (out = x & y)?
+        no; // negate the out output?
+    OUT 
+        out[16], // 16-bit output
+        zr,      // if (out == 0) equals 1, else 0
+        ng;      // if (out < 0)  equals 1, else 0
+
+    PARTS:
+    // variables for negating and zeroing x
+    Not16(in=x, out=notx);
+    And16(a=x, b=notx, out=zerox);
+
+    // variables for negating and zeroing y
+    Not16(in=y, out=noty);
+    And16(a=y, b=noty, out=zeroy);
+
+    // decide whether x is zeroed and/or negated with multiplexers
+    Mux16(a=x, b=zerox, sel=zx, out=fzerox);
+    Not16(in=fzerox, out=notfzerox);
+    Mux16(a=fzerox, b=notfzerox, sel=nx, out=finalxfunction);
+
+    // decide whether y is zeroed and/or negated with multiplexers
+    Mux16(a=y, b=zeroy, sel=zy, out=fzeroy);
+    Not16(in=fzeroy, out=notfzeroy);
+    Mux16(a=fzeroy, b=notfzeroy, sel=ny, out=finalyfunction);
+    
+    // decide between (out = x + y) or (out = x & y)
+    Add16(a=finalxfunction, b=finalyfunction, out=sumxy);
+    And16(a=finalxfunction, b=finalyfunction, out=andxy);
+    Mux16(a=andxy, b=sumxy, sel=f, out=finalf);
+
+    // check if f is negated
+    Not16(in=finalf, out=nofinalf);
+    Mux16(a=finalf, 
+        b=nofinalf, sel=no, out[0..7]=semiout1, out[8..15]=semiout2,
+        out[15]=nflag,
+        out=out);
+
+    // additional zr flag
+    Or8Way(in=semiout1, out=allors1);
+    Or8Way(in=semiout2, out=allors2);
+    Or(a=allors1, b=allors2, out=orout);
+    Mux(a=true, b=false, sel=orout, out=zr);
+
+    // additional ng flag (is the out a negative value?)
+    // by 2"complement design, first bit is 1 for negative values
+    Mux(a=false, b=true, sel=nflag, out=ng);
+}
